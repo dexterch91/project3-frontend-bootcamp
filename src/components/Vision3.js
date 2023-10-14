@@ -5,10 +5,12 @@ import {
     FilesetResolver,
     DrawingUtils
   } from "@mediapipe/tasks-vision";
+import { Typography } from '@mui/material';
 
 function PoseProcessing() {
   const [poseLandmarker, setPoseLandmarker] = useState(null);
   const [webcamRunning, setWebcamRunning] = useState(null);
+  const [disabledVideoButton,setDisabledVideoButton] = useState(true);
   const [videoHeight] = useState("360px");
   const [videoWidth] = useState("480px");
   const [canvasCtx, setCanvasCtx] = useState(null);
@@ -16,6 +18,9 @@ function PoseProcessing() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const enableWebcamButtonRef = useRef(null);
+  // Define the state variable to hold the array of points
+  const [points, setPoints] = useState(Array(33).fill({ x: 0, y: 0, z: 0 }));
+  const [keyRoi, setKeyRoi] = useState([])
 
   useEffect(() => {
     async function createPoseLandmarker() {
@@ -26,7 +31,7 @@ function PoseProcessing() {
       
       const newPoseLandmarker = await PoseLandmarker.createFromOptions(vision, {
         baseOptions: {
-          modelAssetPath: `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task`,
+          modelAssetPath: `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task`,
           delegate: "GPU",
         },
         runningMode: "VIDEO",
@@ -34,6 +39,7 @@ function PoseProcessing() {
       });
 
       setPoseLandmarker(newPoseLandmarker);
+      setDisabledVideoButton(false); //allow user to click
 
 
     }
@@ -64,24 +70,48 @@ function PoseProcessing() {
               const drawingUtils = new DrawingUtils(canvasCtx);
               canvasCtx.save();
               canvasCtx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+            //   console.log(result.landmarks.length !== 0 )
+            //   console.log(result.landmarks.length !== 0 ? result.landmarks[0][0].z : null) //printing out the human pose
+              //Update the coordinates for the pose
+              setPoints(result.landmarks.length !== 0 ? result.landmarks[0] : null)
 
+            //Drawing of the landmarks
               for (const landmark of result.landmarks) {
+                //Draw dots
                 drawingUtils.drawLandmarks(landmark, {
-                  radius: 5
+                    color:"#000000",
+                    radius: 1
                 });
-                drawingUtils.drawConnectors(landmark, PoseLandmarker.POSE_CONNECTIONS, { color: "#00FF00" });
-              }
+                canvasCtx.font = "12px Arial";
+                //Draw connectors
+                drawingUtils.drawConnectors(landmark, PoseLandmarker.POSE_CONNECTIONS, { color: "#1877F2" });
+                //Label the key points
+                for (const [index, element] of landmark.entries()) {
+                    // console.log(index, element.x, element.y)
+                    canvasCtx.strokeText(index, (element.x)*canvasRef.current.width, element.y*canvasRef.current.height); //plot the numbers
+                  }
+                
+            }
               canvasCtx.restore();
             });
           }
   
     }
-
+    setCanvasCtx(canvasCtx)
     console.log(`Webcam: ${webcamRunning}`)
     
-    if(webcamRunning && videoRef.current && !videoRef.current.paused){
+    //To have additional conditions to check if the video feed is running
+    if(videoRef.current && !videoRef.current.paused){ 
         window.requestAnimationFrame(predictWebcam);
     }
+
+    else{
+        const canvasCtx = canvasRef.current.getContext("2d");
+        canvasCtx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+        console.log(canvasCtx)
+        console.log(canvasRef.current.width, canvasRef.current.height);
+    }
+    
   };
 
     // Function to start the webcam
@@ -133,6 +163,8 @@ function PoseProcessing() {
     if (webcamRunning===false){
         console.log("Stopping Webcam")
         stopWebcam()
+        
+        
     }
 
     // Define a cleanup function to stop the webcam when unmounting
@@ -178,7 +210,7 @@ function PoseProcessing() {
   return (
     <div>
       <h1>Hello, World!</h1>
-      <Button  ref={enableWebcamButtonRef} variant="contained" id="webcamButton" onClick={enableCam}>
+      <Button  disabled={disabledVideoButton} ref={enableWebcamButtonRef} variant="contained" id="webcamButton" onClick={enableCam}>  
         {webcamRunning ? "DISABLE PREDICTIONS" : "ENABLE PREDICTIONS"}
       </Button>
       <p>This is a generic React component.</p>      
@@ -197,6 +229,8 @@ function PoseProcessing() {
         width={videoWidth}
         height={videoHeight}
       ></canvas>
+
+      <Typography>{points === null ? "No objects detected" :  `NOSE - X: ${points[0].x.toFixed(2)}, Y: ${points[0].y.toFixed(2)}, Z:${points[0].z.toFixed(2)}`}</Typography>
     </div>
   );
 }
